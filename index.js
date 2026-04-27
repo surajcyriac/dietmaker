@@ -118,6 +118,115 @@ app.post('/finddiet', apiLimiter, async (req, res) => {
   }
 });
 
+app.post('/generateworkout', apiLimiter, async (req, res) => {
+  try {
+    const formData = req.body;
+    
+    // Safety check
+    const currentKey = process.env.GEMINI_API_KEY;
+    if (!currentKey || currentKey === MOCK_API_KEY || currentKey === 'YOUR_API_KEY_HERE') {
+       console.warn("WARNING: No valid API Key found. Using fallback response.");
+       return res.status(200).json({
+          workout_plan: {
+            theme: "gym",
+            color_scheme: { mode: "dark", primary: "#FF4D4D", secondary: "#121212", accent: "#FFA726", text: "#FFFFFF" },
+            goal: "Error - No API Key",
+            experience_level: "N/A",
+            days_per_week: "0",
+            session_duration: "0",
+            split_type: "Error",
+            weekly_plan: [
+              {
+                day: "Day 1",
+                focus: "Configuration Issue",
+                estimated_duration: "0",
+                exercises: [{ name: "Please configure your API KEY in backend .env to get real AI responses.", sets: "0", reps: "0", rest_seconds: "0", muscle_group: "None", type: "isolation", video_query: "how to get openrouter api key" }],
+                cardio: { included: false, type: "", intensity: "low", duration_minutes: "0", notes: "" }
+              }
+            ]
+          }
+       });
+    }
+
+    const prompt = `
+      You are an expert Strength & Conditioning Coach.
+      Generate a STRUCTURED, SAFE, and PRACTICAL gym workout plan based on these user inputs:
+      Goal: ${formData.goal || 'Not specified'}
+      Gym Experience: ${formData.experienceLevel || 'Not specified'}
+      Days per Week: ${formData.daysPerWeek || 'Not specified'}
+      Cardio Preference: ${formData.cardioPreference || 'No cardio'}
+      
+      CORE LOGIC RULES:
+      1. CRITICAL: If the goal is "Strength", make sure the user gets dedicated rest days instead of continuous high-intensity training programs! Do not over-train. Rest days are marked by no exercises and optional light cardio.
+      2. Time-based: Assume 60 min session. Focus on Compound movements first, Isolation after.
+      3. Balance & Structure: Avoid imbalanced splits, ensure major muscle groups are covered logically.
+      4. UI Context: Return dark theme with strong red/orange accents.
+      
+      Return ONLY valid JSON. No explanations.
+      The output JSON schema must strictly match this format exactly:
+      {
+        "workout_plan": {
+          "theme": "gym",
+          "color_scheme": {
+            "mode": "dark",
+            "primary": "#FF4D4D",
+            "secondary": "#121212",
+            "accent": "#FFA726",
+            "text": "#FFFFFF"
+          },
+          "goal": "string",
+          "experience_level": "string",
+          "days_per_week": "string",
+          "session_duration": "60",
+          "split_type": "string",
+          "weekly_plan": [
+            {
+              "day": "Day 1",
+              "focus": "string",
+              "estimated_duration": "60",
+              "exercises": [
+                {
+                  "name": "string",
+                  "sets": "string",
+                  "reps": "string",
+                  "rest_seconds": "string",
+                  "muscle_group": "string",
+                  "type": "compound | isolation",
+                  "video_query": "string"
+                }
+              ],
+              "cardio": {
+                "included": boolean,
+                "type": "string",
+                "intensity": "low | moderate | high",
+                "duration_minutes": "string",
+                "notes": "string"
+              }
+            }
+          ]
+        }
+      }
+    `;
+
+    const response = await openai.chat.completions.create({
+      model: "openrouter/free",
+      messages: [
+        { role: "system", content: "You are a specialized AI designed entirely to strictly output valid JSON objects based on instructions. No conversational text." },
+        { role: "user", content: prompt }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const outputJsonString = response.choices[0].message.content;
+    const workoutPlan = JSON.parse(outputJsonString);
+    
+    res.status(200).json(workoutPlan);
+  } catch (error) {
+    console.error("Error generating workout:", error);
+    res.status(500).json({ error: "API Error: " + (error.message || "Failed to generate workout using AI.") });
+  }
+});
+
 app.listen(PORT, () => {
-    console.log(`Server is running on port \${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
